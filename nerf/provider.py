@@ -152,7 +152,7 @@ class NeRFDataset_Test:
 
             # find the corresponding audio to the image frame
             if not self.opt.asr and self.opt.aud == '':
-                aud = aud_features[min(f['aud_id'], aud_features.shape[0] - 1)] # careful for the last frame...
+                aud = aud_features[min(f['aud_id'], aud_features.shape[0] - 1)] # careful for the last frame...  ##첨 프레임부터 마지막 프레임까지 가져온다
                 self.auds.append(aud)
 
             if self.opt.exp_eye:
@@ -228,7 +228,7 @@ class NeRFDataset_Test:
 
         # load intrinsics
         
-        fl_x = fl_y = transform['focal_len']
+        fl_x = fl_y = transform['focal_len']  ##https://m.blog.naver.com/zzazza0106/221325191684    https://darkpgmr.tistory.com/107
 
         cx = (transform['cx'] / downscale)
         cy = (transform['cy'] / downscale)
@@ -326,14 +326,14 @@ class NeRFDataset:
         self.start_index = opt.data_range[0]
         self.end_index = opt.data_range[1]
 
-        self.training = self.type in ['train', 'all', 'trainval']
+        self.training = self.type in ['train', 'all', 'trainval']  ## all = all splits train/val/test
         self.num_rays = self.opt.num_rays if self.training else -1
 
         # load nerf-compatible format data.
         
         # load all splits (train/valid/test)
         if type == 'all':
-            transform_paths = glob.glob(os.path.join(self.root_path, '*.json'))
+            transform_paths = glob.glob(os.path.join(self.root_path, '*.json'))  ##root_path = args.path  데이터 경로 
             transform = None
             for transform_path in transform_paths:
                 with open(transform_path, 'r') as f:
@@ -361,8 +361,8 @@ class NeRFDataset:
             self.H = int(transform['h']) // downscale
             self.W = int(transform['w']) // downscale
         else:
-            self.H = int(transform['cy']) * 2 // downscale
-            self.W = int(transform['cx']) * 2 // downscale
+            self.H = int(transform['cy']) * 2 // downscale  ##cy = central point of y ?  
+            self.W = int(transform['cx']) * 2 // downscale  ##cx = central point of x ?  
         
         # read images
         frames = transform["frames"]
@@ -376,7 +376,7 @@ class NeRFDataset:
         # use a subset of dataset.
         if type == 'train':
             if self.opt.part:
-                frames = frames[::10] # 1/10 frames
+                frames = frames[::10] # 1/10 frames  ##https://stackoverflow.com/questions/3453085/what-is-double-colon-in-python-when-subscripting-sequences
             elif self.opt.part2:
                 frames = frames[:375] # first 15s
         elif type == 'val':
@@ -387,7 +387,7 @@ class NeRFDataset:
         # only load pre-calculated aud features when not live-streaming
         if not self.opt.asr:
 
-            # empty means the default self-driven extracted features.
+            # empty means the default self-driven extracted features.  ##같은 사람의 얼굴과 보이스를 사용하여 인퍼런스하는것
             if self.opt.aud == '':
                 if 'esperanto' in self.opt.asr_model:
                     aud_features = np.load(os.path.join(self.root_path, 'aud_eo.npy'))
@@ -397,7 +397,7 @@ class NeRFDataset:
                     aud_features = np.load(os.path.join(self.root_path, 'aud.npy'))
             # cross-driven extracted features. 
             else:
-                aud_features = np.load(self.opt.aud)
+                aud_features = np.load(self.opt.aud)  ##특정 audio 경로를 준다면, 트레이닝과 다른 보이스를 인퍼런스할수있게 주는것이다 
 
             aud_features = torch.from_numpy(aud_features)
 
@@ -422,7 +422,7 @@ class NeRFDataset:
         self.exps = []
 
         self.auds = []
-        self.face_rect = []
+        self.face_rect = [] ##rectangular
         self.lips_rect = []
         self.eye_area = []
 
@@ -609,7 +609,7 @@ class NeRFDataset:
         self.intrinsics = np.array([fl_x, fl_y, cx, cy])
 
         # directly build the coordinate meshgrid in [-1, 1]^2
-        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1]
+        self.bg_coords = get_bg_coords(self.H, self.W, self.device) # [1, H*W, 2] in [-1, 1]  ##백그라운드이다 아니다를 이거로 체크하는것인듯  -1은 아니고 1은 맞고?
 
 
     def mirror_index(self, index):
@@ -649,8 +649,8 @@ class NeRFDataset:
         results['index'] = index # for ind. code
         results['H'] = self.H
         results['W'] = self.W
-        results['rays_o'] = rays['rays_o']
-        results['rays_d'] = rays['rays_d']
+        results['rays_o'] = rays['rays_o']  ## original point
+        results['rays_d'] = rays['rays_d']  ## d = sampling points
 
         # get a mask for rays inside rect_face
         if self.training:

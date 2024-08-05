@@ -137,7 +137,7 @@ class NeRFNetwork(NeRFRenderer):
         self.hidden_dim_ambient = hidden_dim_ambient
         self.ambient_dim = ambient_dim
 
-        self.ambient_net = MLP(self.in_dim + self.audio_dim, self.ambient_dim, self.hidden_dim_ambient, self.num_layers_ambient)
+        self.ambient_net = MLP(self.in_dim + self.audio_dim, self.ambient_dim, self.hidden_dim_ambient, self.num_layers_ambient)  ##image와 audio features 를 같이 섞는것으로 보인다
 
         # sigma network
         self.num_layers = num_layers
@@ -146,14 +146,14 @@ class NeRFNetwork(NeRFRenderer):
 
         self.eye_dim = 1 if self.exp_eye else 0
 
-        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers)
+        self.sigma_net = MLP(self.in_dim + self.in_dim_ambient + self.eye_dim, 1 + self.geo_feat_dim, self.hidden_dim, self.num_layers) ##geo_feat_dim???   1+ 인 이유는 DENSITY도 아웃풋하기 위해서일것이다 아마도
 
         # color network
         self.num_layers_color = num_layers_color        
         self.hidden_dim_color = hidden_dim_color
         self.encoder_dir, self.in_dim_dir = get_encoder('spherical_harmonics')
         
-        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color)
+        self.color_net = MLP(self.in_dim_dir + self.geo_feat_dim + self.individual_dim, 3, self.hidden_dim_color, self.num_layers_color)  ##individual dim은 각 개인마다의 FEATURE를 얘기하는것일까?
 
         if self.torso:
             # torso deform network
@@ -204,7 +204,7 @@ class NeRFNetwork(NeRFRenderer):
 
         dx = self.torso_deform_net(h)
 
-        x = (x + dx).clamp(-1, 1)
+        x = (x + dx).clamp(-1, 1)  ##pose와 deformed torso feature를 결합한 후에 이 값을 토르소 인코더에 넣어준다
 
         x = self.torso_encoder(x, bound=1)
 
@@ -235,7 +235,7 @@ class NeRFNetwork(NeRFRenderer):
             enc_w = self.encoder_ambient(ambient, bound=1)
         else:
             
-            enc_a = enc_a.repeat(x.shape[0], 1) 
+            enc_a = enc_a.repeat(x.shape[0], 1)   ##미니배치갯수만큼 그냥 계속 리피트해라 
             enc_x = self.encoder(x, bound=self.bound)
 
             # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"enocoder_deform = {curr_time}"); starter.record()
@@ -257,10 +257,10 @@ class NeRFNetwork(NeRFRenderer):
         else:
             h = torch.cat([enc_x, enc_w], dim=-1)
 
-        h = self.sigma_net(h)
+        h = self.sigma_net(h)   
 
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"sigma_net = {curr_time}"); starter.record()
-        sigma = trunc_exp(h[..., 0])
+        sigma = trunc_exp(h[..., 0])   ##this is the density 결과값 
         geo_feat = h[..., 1:]
 
         # color
@@ -277,12 +277,12 @@ class NeRFNetwork(NeRFRenderer):
         # ender.record(); torch.cuda.synchronize(); curr_time = starter.elapsed_time(ender); print(f"color_net = {curr_time}"); starter.record()
         
         # sigmoid activation for rgb
-        color = torch.sigmoid(h)
+        color = torch.sigmoid(h)  ##sigmoid를 통해서 0~1 사이의 컬러값으로 만든다 
 
         return sigma, color, ambient
 
 
-    def density(self, x, enc_a, e=None):
+    def density(self, x, enc_a, e=None):  ##컬러값안뽑고 density 값만 뽑고 싶을 때 이 function 사용하면 된다 
         # x: [N, 3], in [-bound, bound]
 
         if enc_a is None:

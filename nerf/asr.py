@@ -19,7 +19,7 @@ def _read_frame(stream, exit_event, queue, chunk):
             print(f'[INFO] read frame thread ends')
             break
         frame = stream.read(chunk, exception_on_overflow=False)
-        frame = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32767 # [chunk]
+        frame = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32767 # [chunk]  ##The highest value that can be represented using a 16-bit binary code (such as in a signed 16-bit integer) is 32767.
         queue.put(frame)
 
 def _play_frame(stream, exit_event, queue, chunk):
@@ -29,21 +29,21 @@ def _play_frame(stream, exit_event, queue, chunk):
             print(f'[INFO] play frame thread ends')
             break
         frame = queue.get()
-        frame = (frame * 32767).astype(np.int16).tobytes()
-        stream.write(frame, chunk)
+        frame = (frame * 32767).astype(np.int16).tobytes()  ##The highest value that can be represented using a 16-bit binary code (such as in a signed 16-bit integer) is 32767.
+        stream.write(frame, chunk)  ##음성파일을 재생하기 위해서는 pyaudio.open() 인스턴스를 write하면된다
 
 class ASR:
     def __init__(self, opt):
 
         self.opt = opt
 
-        self.play = opt.asr_play
+        self.play = opt.asr_play  ## --asr_play인자를 주면 플레이 바로 할거다
 
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.fps = opt.fps # 20 ms per frame
+        self.fps = opt.fps # 20 ms per frame.  ##default값은 50
         self.sample_rate = 16000
-        self.chunk = self.sample_rate // self.fps # 320 samples per chunk (20ms * 16000 / 1000)
-        self.mode = 'live' if opt.asr_wav == '' else 'file'
+        self.chunk = self.sample_rate // self.fps # 320 samples per chunk (20ms * 16000 / 1000). ##Chunk here means 버퍼안에 몇개의 프레임이나 넣을 것이냐. 즉 하나의 버퍼에 320개의 sample을 넣을것이란뜻 (미니배치처럼)
+        self.mode = 'live' if opt.asr_wav == '' else 'file'  ##default는 ''이다
 
         if 'esperanto' in self.opt.asr_model:
             self.audio_dim = 44
@@ -53,7 +53,7 @@ class ASR:
             self.audio_dim = 32
 
         # prepare context cache
-        # each segment is (stride_left + ctx + stride_right) * 20ms, latency should be (ctx + stride_right) * 20ms
+        # each segment is (stride_left + ctx + stride_right) * 20ms, latency should be (ctx + stride_right) * 20ms   ##ctx = context
         self.context_size = opt.m
         self.stride_left_size = opt.l
         self.stride_right_size = opt.r
@@ -74,13 +74,13 @@ class ASR:
             self.file_stream = self.create_file_stream()
         else:
             # start a background process to read frames
-            self.input_stream = self.audio_instance.open(format=pyaudio.paInt16, channels=1, rate=self.sample_rate, input=True, output=False, frames_per_buffer=self.chunk)
-            self.queue = Queue()
-            self.process_read_frame = Thread(target=_read_frame, args=(self.input_stream, self.exit_event, self.queue, self.chunk))
+            self.input_stream = self.audio_instance.open(format=pyaudio.paInt16, channels=1, rate=self.sample_rate, input=True, output=False, frames_per_buffer=self.chunk)  ##input = Specifies whether this is an input stream.
+            self.queue = Queue()  ##https://www.daleseo.com/python-queue/#google_vignette
+            self.process_read_frame = Thread(target=_read_frame, args=(self.input_stream, self.exit_event, self.queue, self.chunk))  ##https://mechacave.tistory.com/2
         
         # play out the audio too...?
         if self.play:
-            self.output_stream = self.audio_instance.open(format=pyaudio.paInt16, channels=1, rate=self.sample_rate, input=False, output=True, frames_per_buffer=self.chunk)
+            self.output_stream = self.audio_instance.open(format=pyaudio.paInt16, channels=1, rate=self.sample_rate, input=False, output=True, frames_per_buffer=self.chunk)  ##output – Specifies whether this is an output stream
             self.output_queue = Queue()
             self.process_play_frame = Thread(target=_play_frame, args=(self.output_stream, self.exit_event, self.output_queue, self.chunk))
 
@@ -89,11 +89,11 @@ class ASR:
 
         # create wav2vec model
         print(f'[INFO] loading ASR model {self.opt.asr_model}...')
-        self.processor = AutoProcessor.from_pretrained(opt.asr_model)
+        self.processor = AutoProcessor.from_pretrained(opt.asr_model)  ##processor = the objects that pre-process inputs for multi-modal models such as Wav2Vec2 (speech and text) or CLIP (text and vision)
         self.model = AutoModelForCTC.from_pretrained(opt.asr_model).to(self.device)
 
         # prepare to save logits
-        if self.opt.asr_save_feats:
+        if self.opt.asr_save_feats: ##asr_save_feats를 store_true로 주면 세이브하니 라이브를 위해 쓰지말자 
             self.all_feats = []
 
         # the extracted features 
@@ -103,7 +103,7 @@ class ASR:
         self.feat_queue = torch.zeros(self.feat_buffer_size * self.context_size, self.audio_dim, dtype=torch.float32, device=self.device)
 
         # TODO: hard coded 16 and 8 window size...
-        self.front = self.feat_buffer_size * self.context_size - 8 # fake padding
+        self.front = self.feat_buffer_size * self.context_size - 8 # fake padding. ##4*50 = 200. 200-8 = 192.
         self.tail = 8
         # attention window...
         self.att_feats = [torch.zeros(self.audio_dim, 16, dtype=torch.float32, device=self.device)] * 4 # 4 zero padding...
@@ -118,7 +118,7 @@ class ASR:
         # start
         if self.mode == 'live' and not self.listening:
             print(f'[INFO] starting read frame thread...')
-            self.process_read_frame.start()
+            self.process_read_frame.start()  ##start() -> starting the thread
             self.listening = True
         
         if self.play and not self.playing:
@@ -134,14 +134,14 @@ class ASR:
             self.output_stream.stop_stream()
             self.output_stream.close()
             if self.playing:
-                self.process_play_frame.join()
+                self.process_play_frame.join()  ##join = https://stackoverflow.com/questions/15085348/what-is-the-use-of-join-in-threading
                 self.playing = False
 
         if self.mode == 'live':
             self.input_stream.stop_stream()
             self.input_stream.close()
             if self.listening:
-                self.process_read_frame.join()
+                self.process_read_frame.join() ##https://burningrizen.tistory.com/244
                 self.listening = False
 
 
@@ -166,14 +166,14 @@ class ASR:
                 feat = self.feat_queue[self.front:self.tail]
             # [++t-----------f+]
             else:
-                feat = torch.cat([self.feat_queue[self.front:], self.feat_queue[:self.tail]], dim=0)
+                feat = torch.cat([self.feat_queue[self.front:], self.feat_queue[:self.tail]], dim=0) ##[self.front:] = 192인덱스 부터 뒤까지 쭉이랑, 처음부터 8전까지 (tail)을 콘캣해라
 
             self.front = (self.front + 2) % self.feat_queue.shape[0]
             self.tail = (self.tail + 2) % self.feat_queue.shape[0]
 
             # print(self.front, self.tail, feat.shape)
 
-            self.att_feats.append(feat.permute(1, 0))
+            self.att_feats.append(feat.permute(1, 0))  ## 16, 44
         
         att_feat = torch.stack(self.att_feats, dim=0) # [8, 44, 16]
 
@@ -188,7 +188,7 @@ class ASR:
             return
 
         # get a frame of audio
-        frame = self.get_audio_frame()
+        frame = self.get_audio_frame() ##queue.put() -> 즉 자료를 가져오고 (꺼내고)
         
         # the last frame
         if frame is None:
@@ -198,7 +198,7 @@ class ASR:
             self.frames.append(frame)
             # put to output
             if self.play:
-                self.output_queue.put(frame)
+                self.output_queue.put(frame)  ##queue.put() 자료를 넣는다 사용하기위해 
             # context not enough, do not run network.
             if len(self.frames) < self.stride_left_size + self.context_size + self.stride_right_size:
                 return
@@ -207,13 +207,13 @@ class ASR:
 
         # discard the old part to save memory
         if not self.terminated:
-            self.frames = self.frames[-(self.stride_left_size + self.stride_right_size):]
+            self.frames = self.frames[-(self.stride_left_size + self.stride_right_size):]  ##가장맨앞에서 left+right사이즈만큼 더한것을 프레임에서 지우자
 
         logits, labels, text = self.frame_to_text(inputs)
         feats = logits # better lips-sync than labels
 
         # save feats
-        if self.opt.asr_save_feats:
+        if self.opt.asr_save_feats:  ##세이브하지말자. 라이브해야한다.
             self.all_feats.append(feats)
 
         # record the feats efficiently.. (no concat, constant memory)
@@ -310,7 +310,7 @@ class ASR:
         
         else:
 
-            frame = self.queue.get()
+            frame = self.queue.get()  ##실시간 스트리밍으로 오디오 프레임을 가져온다 
             # print(f'[INFO] get frame {frame.shape}')
 
             self.idx = self.idx + self.chunk
@@ -321,7 +321,7 @@ class ASR:
     def frame_to_text(self, frame):
         # frame: [N * 320], N = (context_size + 2 * stride_size)
         
-        inputs = self.processor(frame, sampling_rate=self.sample_rate, return_tensors="pt", padding=True)
+        inputs = self.processor(frame, sampling_rate=self.sample_rate, return_tensors="pt", padding=True)  ##https://huggingface.co/docs/transformers/en/main_classes/processors
         
         with torch.no_grad():
             result = self.model(inputs.input_values.to(self.device))

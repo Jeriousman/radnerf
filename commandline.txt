@@ -1,0 +1,147 @@
+
+##오디오 소리는 안나지만 에러 안나고 인퍼런스 되는 GUI 커맨드라인 
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --aud data/intro_eo.npy --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui
+##오디오 소리는 안나지만 에러 안나고 인퍼런스 되는 GUI 커맨드라인. 그리고 GUI 실행할때 스타트버튼 없이 바로 재생되도록한다 
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --aud data/intro_eo.npy --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui --playing
+
+
+##오디오가 실행되어야 할거 같은데 --asr_play 때문에... 그런데 안된다? 그리고 실행하면 조금있다가 다운먹는다
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --aud data/intro_eo.npy --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui --asr --asr_play
+
+## --asr과 --asr_wav는 꼭 항상 같이 사용되어야한다.  ## --asr_play를 인자로 넣어주지 않으면 소리가 나지 않는다@!!!
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --asr_wav data/obama/aud.wav --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui --asr --asr_play
+
+##이것도 오디오 입혀지는지 테스트 해보려고 asr_wav 넣어봤는데 다운먹는다
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --aud data/intro_eo.npy --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui --asr_wav else  
+
+ 
+
+
+python test.py --pose data/obama/obama.json --ckpt pretrained/obama_eo.pth --aud data/intro_eo.npy --workspace trial_obama/ -O --torso --bg_img data/obama/bc.jpg --gui --asr
+
+## 미리 데이터 eo.npy 만들어 놓지 않은 상태에서 리얼타임 GUI 어플리케이션 실행하는 코드 
+python main.py data/obama --workspace trial_obama_torso/ -O --torso --test --gui --asr --asr_play
+
+
+
+##trainig
+python main.py data/obama/ --workspace trial_obama_torso/ -O --torso --test
+
+
+gui.py 에서 self.playing을 true로 바꾸면 gui 뜨자마자 start버튼 누를 필요없이 바로 스타트된다 
+
+
+
+##할것
+
+1. get_encoder 모델들 확인해 보기
+2. _trunc_exp 펑션 확인해보기 
+
+
+## GUI real time rendering 관련해서 asr 등을 체크하고 싶으면 test.py, provider.py, 
+
+provider.py에는 실시간 args.asr에 대한 코드는 없다 
+
+gui.py에 asr관련 코드가 있다. test.py의 NeRFGUI 클래스가 바로 그것이다.
+
+
+
+'''
+if self.opt.asr:
+    self.asr = ASR(opt)
+'''
+
+오디오 ffmpeg로 병합하기
+https://superuser.com/questions/277642/how-to-merge-audio-and-video-file-in-ffmpeg
+ffmpeg -i video.mp4 -i audio.wav -c:v copy -c:a aac output.mp4
+
+
+
+
+## 이거 성공했다 
+python data_utils/process.py data/obama/trump_28.mp4 --task 1
+python data_utils/process.py data/obama/trump_28.mp4 --task 2
+python main.py data/obama/ --workspace trial_obama_torso/ -O --torso --test --test_train --data_range 0 100 --aud data/obama/aud_eo.npy
+ffmpeg -i trial_obama_torso/results/ngp_ep0028.mp4 -i data/obama/aud.wav -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest ./output.mp4
+
+
+python main.py data/obama/ --workspace trial_obama_torso/ -O --torso --test --aud data/obama/aud_eo.npy
+ffmpeg -i trial_obama_torso/results/ngp_ep0028.mp4 -i data/obama/aud.wav -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest ./output.mp4
+
+
+
+##다른 프리트레인 모델로 다른 오디오 넣어서 no real time 인퍼런스 테스트. 이사람것으로 했을때는 결과가 좋지 않다 
+python test.py --pose pretrained/engm.json --ckpt pretrained/engm_eo.pth --aud data/obama/aud_eo.npy --workspace trial_obama_9/ -O --torso
+ffmpeg -i trial_obama_9/results/ngp_ep0059.mp4 -i data/obama/aud.wav -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest ./output.mp4
+
+
+##내가 트레인한 것이 아닌 제공된 프리트레인 오바마 모델로 조슈아 오디오 넣어서 no real time 인퍼런스 테스트.
+python test.py --pose pretrained/obama.json --ckpt pretrained/obama_eo.pth --aud data/obama/aud_eo.npy --workspace trial_obama_joshua/ -O --torso
+ffmpeg -i trial_obama_joshua/results/ngp_ep0028.mp4 -i data/obama/aud.wav -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest ./output_joshua.mp4
+
+
+
+--asr_play 이것을 설정하면 스트리밍으로 바로 소리도 들리게 해줘야한다. 
+
+
+Audio Mirroring 이란?
+
+It can also be used to stream audio to multiple audio devices (AKA Audio mirroring), without video   ##https://support.woojer.com/en/support/solutions/articles/12000073948-apply-audio-mirroring-using-obs-windows-
+
+
+
+###Training####
+
+
+
+
+###FFMPEG 실시간 HLS 커맨드라인 코드
+
+https://ffmpeg.org/ffmpeg.html#toc-Main-options (check! 5.4 Main options)
+ffmpeg -y -f -r 25 -i data/obama/trump_28.mp4 -vcodec rawvideo -pix_fmt bgr24 -s 256x256 -i data/obama/trump_28.wav -c:v libx264 -c:a aac -strict experimental -pix_fmt yuv420p -preset ultrafast -g 20 -hls_time 2 -f hls video/output.m3u8
+
+
+##이거 제대로 실행된다 (command line에서)
+ffmpeg -y -i data/obama/trump_28.mp4 -f rawvideo -vcodec rawvideo -s 512x512 -r 25 -i data/obama/trump_28.wav -c:v libx264 -c:a aac -strict experimental -pix_fmt yuv420p -preset ultrafast -g 100 -hls_time 4 -hls_list_size 0 -f hls video/output.m3u8
+
+##This works out!! 이것이 VCL player에서 스트림 파일 실행해 보는 코드다
+http://192.168.125.139:28647/hls/output.m3u8
+
+
+##https://gist.github.com/tayvano/6e2d456a9897f55025e25035478a3a50
+
+-r 25 (frame rate 25)
+-y (기존파일 덮어쓰기) 
+-i ./audio.wav (오디오 인풋파일)
+-i ./video.mp4 (비디오 인풋파일. 오디오 비디오 확장자에 따라 자동으로 비디오 인풋 오디오 인풋을 알아서 인식한다)
+-f rawvideo (rawvideo format 형식을 쓴다는 뜻. 만약 지원되는 format 종류를 체크하고 싶으면 ffmpeg -format 을 커맨드라인에 쳐보라)
+-s 256x256 (Set frame size. The format is ‘wxh’ (default - same as source).)
+
+
+
+        
+        
+        '-y',  # 기존 파일 덮어쓰기
+        '-f', 'rawvideo',
+        '-vcodec', 'rawvideo',
+        '-pix_fmt', 'bgr24',
+        '-s', '512x512',  # 크기 설정
+        '-r', '25',  # 프레임 속도
+        '-i', '-',  # 파이프로 입력 받기
+        '-i', 'data/raw/val_wavs/MacronSpeech.wav',  # 오디오 파일 추가 ##-i = input 
+        '-c:v', 'libx264',
+        '-c:a', 'aac',  # 오디오 코덱 설정
+        '-strict', 'experimental',
+        '-pix_fmt', 'yuv420p',
+        '-preset', 'ultrafast',
+        '-g', '20',
+        '-hls_time', '2',  # 각 세그먼트의 길이를 10초로 설정
+        '-hls_list_size', '0',  # 무한 재생 목록 크기
+        '-f', 'hls',  # HLS 포맷 사용
+        'video/output.m3u8']  # 출력 파일 이름
+
+
+##VCL에서 실행할때 이런식으로 해라 
+http://192.168.125.139:28647/hls/face1_6.mp4
+
+http://192.168.125.139:28647/hls/--enable-libx264

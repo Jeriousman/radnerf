@@ -68,8 +68,8 @@ if __name__ == '__main__':
 
     ### GUI options
     parser.add_argument('--gui', action='store_true', help="start a GUI")
-    parser.add_argument('--W', type=int, default=450, help="GUI width")
-    parser.add_argument('--H', type=int, default=450, help="GUI height")
+    parser.add_argument('--W', type=int, default=512, help="GUI width")
+    parser.add_argument('--H', type=int, default=512, help="GUI height")
     parser.add_argument('--radius', type=float, default=3.35, help="default GUI camera radius from center")
     parser.add_argument('--fovy', type=float, default=21.24, help="default GUI camera fovy")
     parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
@@ -95,6 +95,8 @@ if __name__ == '__main__':
     parser.add_argument('--asr', action='store_true', help="load asr for real-time app")
     parser.add_argument('--asr_wav', type=str, default='', help="load the wav and use as input")
     parser.add_argument('--asr_play', action='store_true', help="play out the audio")
+    
+    # parser.add_argument('--playing', action='store_true', help="playing without start button when using GUI")
 
     parser.add_argument('--asr_model', type=str, default='cpierse/wav2vec2-large-xlsr-53-esperanto')
     # parser.add_argument('--asr_model', type=str, default='facebook/wav2vec2-large-960h-lv60-self')
@@ -136,13 +138,13 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = NeRFNetwork(opt)
+    model = NeRFNetwork(opt)  ##network.py   실시간 asr 관련된 코드는 없다
 
     # print(model)
 
     trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, fp16=opt.fp16, metrics=[], use_checkpoint=opt.ckpt)
 
-    test_loader = NeRFDataset_Test(opt, device=device).dataloader()
+    test_loader = NeRFDataset_Test(opt, device=device).dataloader()   ##provider.py 실시간 asr 관련된 코드는 없다
 
     # temp fix: for update_extra_states
     model.aud_features = test_loader._data.auds
@@ -150,10 +152,9 @@ if __name__ == '__main__':
 
     if opt.gui:
         # we still need test_loader to provide audio features for testing.
-        with NeRFGUI(opt, trainer, test_loader) as gui:
+        with NeRFGUI(opt, trainer, test_loader) as gui:  ##GUI.py. 여기에 asr 관련 live streaming audio 코드가 있다. 177번째 라인부터 중요하다 
             gui.render()
     
     else:
-        
         ### test and save video (fast)  
         trainer.test(test_loader)

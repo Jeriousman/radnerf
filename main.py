@@ -37,10 +37,10 @@ if __name__ == '__main__':
     
     parser.add_argument('--lambda_amb', type=float, default=0.1, help="lambda for ambient loss")
     
-    parser.add_argument('--bg_img', type=str, default='', help="background image")
+    parser.add_argument('--bg_img', type=str, default='', help="background image. white, black, else")
     parser.add_argument('--fbg', action='store_true', help="frame-wise bg")
     parser.add_argument('--exp_eye', action='store_true', help="explicitly control the eyes")
-    parser.add_argument('--fix_eye', type=float, default=-1, help="fixed eye area, negative to disable, set to 0-0.3 for a reasonable eye")
+    parser.add_argument('--fix_eye', type=float, default=0.3, help="fixed eye area, negative to disable, set to 0-0.3 for a reasonable eye")
     parser.add_argument('--smooth_eye', action='store_true', help="smooth the eye area sequence")
 
     parser.add_argument('--torso_shrink', type=float, default=0.8, help="shrink bg coords to allow more flexibility in deform")
@@ -94,6 +94,9 @@ if __name__ == '__main__':
     parser.add_argument('--asr', action='store_true', help="load asr for real-time app")
     parser.add_argument('--asr_wav', type=str, default='', help="load the wav and use as input")
     parser.add_argument('--asr_play', action='store_true', help="play out the audio")
+    ##Hojun made for test
+    # parser.add_argument('--playing', action='store_true', help="playing without start button when using GUI")
+    
 
     parser.add_argument('--asr_model', type=str, default='cpierse/wav2vec2-large-xlsr-53-esperanto')
     # parser.add_argument('--asr_model', type=str, default='facebook/wav2vec2-large-960h-lv60-self')

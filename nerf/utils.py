@@ -21,7 +21,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data import Dataset, DataLoader
-
+from .asr import ASR
 import trimesh
 import mcubes
 from rich.console import Console
@@ -30,7 +30,8 @@ from torch_ema import ExponentialMovingAverage
 from packaging import version as pver
 import imageio
 import lpips
-
+import threading
+lock = threading.Lock()
 def custom_meshgrid(*args):
     # ref: https://pytorch.org/docs/stable/generated/torch.meshgrid.html?highlight=meshgrid#torch.meshgrid
     if pver.parse(torch.__version__) < pver.parse('1.10'):
@@ -259,7 +260,7 @@ def get_rays(poses, intrinsics, H, W, N=-1, patch_size=1, rect=None):
 
     device = poses.device
     B = poses.shape[0]
-    fx, fy, cx, cy = intrinsics
+    fx, fy, cx, cy = intrinsics ##fx = focal length x, fy = focal length y, cx = central point of x
 
     if rect is not None:
         xmin, xmax, ymin, ymax = rect
@@ -492,7 +493,7 @@ class LMDMeter:
 
             import face_alignment
 
-            self.predictor = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=False)
+            self.predictor = face_alignment.FaceAlignment(face_alignment.LandmarksType.TWO_D, flip_input=False)
 
         self.V = 0
         self.N = 0
@@ -616,7 +617,7 @@ class Trainer(object):
         self.scheduler_update_every_step = scheduler_update_every_step
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
-
+        self.asr = ASR(opt)
         model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
@@ -862,9 +863,9 @@ class Trainer(object):
 
         outputs = self.model.render(rays_o, rays_d, auds, bg_coords, poses, eye=eye, index=index, staged=True, bg_color=bg_color, perturb=perturb, **vars(self.opt))
 
-        pred_rgb = outputs['image'].reshape(-1, H, W, 3)
+        pred_rgb = outputs['image'].reshape(-1, H, W, 3) ##pred_rgb size = [1, 450, 450, 3]
         pred_depth = outputs['depth'].reshape(-1, H, W)
-
+        # print('pred_rgb.shape', pred_rgb.shape)
         return pred_rgb, pred_depth
 
 
@@ -971,6 +972,10 @@ class Trainer(object):
         imageio.mimwrite(os.path.join(save_path, f'{name}.mp4'), all_preds, fps=25, quality=8, macro_block_size=1)
 
         self.log(f"==> Finished Test.")
+
+
+
+
     
     # [GUI] just train for 16 steps, without any other overhead that may slow down rendering.
     def train_gui(self, train_loader, step=16):
@@ -1032,6 +1037,7 @@ class Trainer(object):
         }
         
         return outputs
+
     
     # [GUI] test on a single image
     def test_gui(self, pose, intrinsics, W, H, auds, eye=None, index=0, bg_color=None, spp=1, downscale=1):
@@ -1041,7 +1047,7 @@ class Trainer(object):
         rW = int(W * downscale)
         intrinsics = intrinsics * downscale
 
-        if auds is not None:
+        if auds is not None: ##not on the fly 
             auds = auds.to(self.device)
 
         pose = torch.from_numpy(pose).unsqueeze(0).to(self.device)
@@ -1095,12 +1101,11 @@ class Trainer(object):
             'image': pred,
             'depth': pred_depth,
         }
-
         return outputs
 
     # [GUI] test with provided data
-    def test_gui_with_data(self, data, W, H):
-        
+    # def test_gui_with_data(self, data, W, H, q=None):
+    def test_gui_with_data(self, test_dataloader, W, H, q=None):    
         self.model.eval()
 
         if self.ema is not None:
@@ -1109,29 +1114,70 @@ class Trainer(object):
 
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=self.fp16):
-                # here spp is used as perturb random seed!
-                # face: do not perturb for the first spp, else lead to scatters.
-                preds, preds_depth = self.test_step(data, perturb=False)
+                for data in test_dataloader:
+                    # print('dataqq', data)
+                    # here spp is used as perturb random seed!
+                    # face: do not perturb for the first spp, else lead to scatters.
+                    data['auds'] = self.asr.get_next_feat()
+                    preds, preds_depth = self.test_step(data, perturb=False)
+                    
+                    # outputs = (preds.squeeze(0).permute(2, 0, 1)*255).int().cpu().detach().numpy().astype(np.uint8).tobytes()
+                    # outputs = cv2.cvtColor(outputs, cv2.COLOR_BGR2RGB)
+                    
+                    # print('preds shape', preds.shape)
+                    
+                    
+                        
+                        
 
-        if self.ema is not None:
-            self.ema.restore()
+                    if self.ema is not None:
+                        self.ema.restore()
 
-        if self.opt.color_space == 'linear':
-            preds = linear_to_srgb(preds)
+                    if self.opt.color_space == 'linear':
+                        preds = linear_to_srgb(preds)
 
-        # the H/W in data may be differnt to GUI, so we still need to resize...
-        preds = F.interpolate(preds.permute(0, 3, 1, 2), size=(H, W), mode='bilinear').permute(0, 2, 3, 1).contiguous()
-        preds_depth = F.interpolate(preds_depth.unsqueeze(1), size=(H, W), mode='nearest').squeeze(1)
+                    # the H/W in data may be differnt to GUI, so we still need to resize...
+                    preds = F.interpolate(preds.permute(0, 3, 1, 2), size=(H, W), mode='bilinear').permute(0, 2, 3, 1).contiguous()
+                    preds_depth = F.interpolate(preds_depth.unsqueeze(1), size=(H, W), mode='nearest').squeeze(1)
 
-        pred = preds[0].detach().cpu().numpy()
-        pred_depth = preds_depth[0].detach().cpu().numpy()
+                    # pred = preds[0]#.detach().cpu().numpy()
+                    pred_depth = preds_depth[0].detach().cpu().numpy()
+                    
 
-        outputs = {
-            'image': pred,
-            'depth': pred_depth,
-        }
+                    preds = F.interpolate(preds.permute(0, 3, 1, 2), size=(512, 512), mode='bilinear').permute(0, 2, 3, 1).contiguous()
+                    preds = preds.detach().cpu().numpy()
 
-        return outputs
+                    
+                    # print('justin must come to Incheon', preds.shape)  ## (1, 512, 512, 3)
+                    preds = preds.squeeze(0) 
+                    # print('squeezed incheon justin', preds.shape)  ## (512, 512, 3)
+                    # print('outputs type', type(outputs))
+                    preds = (preds*255).astype(np.uint8)  ## (uint8)
+                    # print('shapeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', preds.shape)  ##(512, 512, 3)
+                    # print('this is denormalized queue get data', outputs)
+                    preds = cv2.cvtColor(preds, cv2.COLOR_BGR2RGB)  
+                    
+                    # cv2.imwrite('test_justin_incheon.png', preds)
+                    # print('dtype: ', preds.dtype)  ##uint8
+                    # print('pred-shape: ', preds.shape)  ##(512, 512, 3)
+                    # print('tstype: ', type(preds))  ## <class 'numpy.ndarray'>
+                    
+                    with lock:
+                        q.put(preds)
+
+                    # # ##Hojun added
+                    # outputs = {
+                    #     'image': preds,
+                    #     'depth': preds_depth[0],
+                    # } 
+                           
+        ## Original code
+        # outputs = {
+        #     'image': pred,
+        #     'depth': pred_depth,
+        # }
+
+        # return outputs
 
     def train_one_epoch(self, loader):
         self.log(f"==> Start Training Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
